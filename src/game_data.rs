@@ -1,7 +1,10 @@
 use std::time::Duration;
 use bevy::ecs::system::Resource;
 
-use crate::board::Board;
+#[derive(Default, Debug)]
+struct Board {
+    occupied: Vec<bool>
+}
 
 
 #[derive(Default, Debug, Resource)]

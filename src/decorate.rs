@@ -1,8 +1,8 @@
 use bevy::color::Color;
 use bevy::ecs::component::Component;
-use bevy::ecs::system::{Commands, Query, Res};
-use bevy::input::ButtonInput;
+use bevy::ecs::system::Commands;
 use bevy::math::Vec2;
+use bevy::transform::components::Transform;
 use bevy::utils::default;
 use bevy::window::Window;
 use bevy::{color::Srgba, ecs::system::Single};
@@ -41,7 +41,6 @@ pub fn decorate_setup(mut commands: Commands, window: Single<&Window>) {
         radii: Some(BorderRadii::single(10.0)),
         ..shapes::Rectangle::default()
     };
-
     commands.spawn((
         ShapeBundle {
             path: GeometryBuilder::build_as(&rect),
@@ -49,5 +48,20 @@ pub fn decorate_setup(mut commands: Commands, window: Single<&Window>) {
         },
         Fill::color(Srgba::hex("#efcc19").unwrap()),
         Decorate,
+    ));
+
+    let board_border_rect = shapes::Rectangle {
+        extents: Vec2::new(250.0, 300.0),
+        origin: RectangleOrigin::Center,
+        ..shapes::Rectangle::default()
+    };
+
+    commands.spawn((
+        ShapeBundle {
+            path: GeometryBuilder::build_as(&board_border_rect),
+            transform: Transform::from_xyz(0.0, 100.0, 20.0),
+            ..default()
+        },
+        Stroke::new(Color::BLACK, 4.0),
     ));
 }
