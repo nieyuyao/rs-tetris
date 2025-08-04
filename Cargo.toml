@@ -4,5 +4,6 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-bevy = "0.16.1"
+bevy = "0.15.3"
+bevy_prototype_lyon = "0.13.0"
 bevy_utils = "0.16.1"
