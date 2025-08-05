@@ -6,7 +6,7 @@ use bevy::{
     },
     hierarchy::BuildChildren,
     input::{mouse::MouseButton, ButtonInput},
-    math::{bounding, Rect, Vec2, Vec3},
+    math::{Vec2, Vec3},
     sprite::Sprite,
     text::{FontSmoothing, JustifyText, Text2d, TextColor, TextFont, TextLayout},
     transform::components::Transform, window::Window,
@@ -264,9 +264,9 @@ pub fn control_on_click(
         for (control_button, mut sprite, transform) in query.iter_mut() {
             let button_size = sprite.custom_size.unwrap();
             let is_hit = is_hit_button(
-                Vec2 {x: transform.translation.x, y:  transform.translation.y },
+                Vec2 {x: transform.translation.x, y: transform.translation.y },
                 mouse_world_pos,
-                button_size.x,
+                button_size.x / 2.0,
             );
             if !is_hit {
                 continue;
@@ -298,7 +298,7 @@ pub fn control_on_click(
             let is_hit = is_hit_button(
                 Vec2 {x: transform.translation.x, y:  transform.translation.y },
             mouse_world_pos,
-                button_size.x,
+                button_size.x / 2.0,
             );
             if !is_hit {
                 continue;

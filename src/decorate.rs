@@ -37,7 +37,6 @@ pub fn decorate_setup(mut commands: Commands, window: Single<&Window>) {
     let final_size = calc_decorate_size(&DESIGN_SIZE, &window.size());
     let rect = shapes::Rectangle {
         extents: final_size,
-        origin: RectangleOrigin::Center,
         radii: Some(BorderRadii::single(10.0)),
         ..shapes::Rectangle::default()
     };
@@ -51,15 +50,14 @@ pub fn decorate_setup(mut commands: Commands, window: Single<&Window>) {
     ));
 
     let board_border_rect = shapes::Rectangle {
-        extents: Vec2::new(250.0, 300.0),
-        origin: RectangleOrigin::Center,
+        extents: Vec2::new(270.0, 310.0),
         ..shapes::Rectangle::default()
     };
 
     commands.spawn((
         ShapeBundle {
             path: GeometryBuilder::build_as(&board_border_rect),
-            transform: Transform::from_xyz(0.0, 100.0, 20.0),
+            transform: Transform::from_xyz(0.0, 90.0, 20.0),
             ..default()
         },
         Stroke::new(Color::BLACK, 4.0),

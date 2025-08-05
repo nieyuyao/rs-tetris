@@ -5,13 +5,14 @@ mod control;
 mod decorate;
 mod game_data;
 mod state;
+mod brick;
 
 use bevy::{prelude::*, window::WindowResolution};
 use bevy_prototype_lyon::plugin::ShapePlugin;
 use game_data::GameData;
 use state::GameSate;
 
-use crate::{board::board_setup, constants::DESIGN_SIZE, control::{control_on_click, control_setup}, decorate::decorate_setup};
+use crate::{board::{board_setup, clock_update_system, move_brick_system}, constants::DESIGN_SIZE, control::{control_on_click, control_setup}, decorate::decorate_setup};
 
 fn scene_setup(mut commands: Commands) {
     commands.spawn(Camera2d);
@@ -59,5 +60,7 @@ fn main() {
         .add_systems(Startup, scene_setup)
         .add_systems(Startup, (decorate_setup, control_setup, board_setup))
         .add_systems(Update, control_on_click)
+        .add_systems(Update, move_brick_system)
+        .add_systems(Update, clock_update_system)
         .run();
 }
