@@ -1,10 +1,20 @@
 use bevy::{
-    asset::Handle, color::{Color, Srgba}, ecs::{
+    asset::Handle,
+    color::{Color, Srgba},
+    ecs::{
         bundle::Bundle,
         component::Component,
         query::With,
         system::{Commands, Query, Res, ResMut, Single},
-    }, hierarchy::{BuildChildren, ChildBuild, ChildBuilder}, math::Vec2, sprite::Anchor, text::{Font, FontSmoothing, Text2d, TextColor, TextFont}, time::Time, transform::components::Transform, ui::widget::{Text, TextUiWriter}, utils::default
+    },
+    hierarchy::{BuildChildren, ChildBuild, ChildBuilder},
+    math::Vec2,
+    sprite::Anchor,
+    text::{Font, FontSmoothing, Text2d, TextColor, TextFont},
+    time::Time,
+    transform::components::Transform,
+    ui::Node,
+    utils::default,
 };
 use bevy_prototype_lyon::{
     draw::{Fill, Stroke},
@@ -14,10 +24,14 @@ use bevy_prototype_lyon::{
 };
 use chrono::{Local, Timelike};
 
-use crate::{constants::{
-    BOARD_BRICK_NODE_COLS, BOARD_BRICK_NODE_ROWS, BRICKS_CONTAINER_HEIGHT, BRICKS_CONTAINER_WIDTH, BRICK_NODE_GAP, BRICK_NODE_INNER_WIDTH, BRICK_NODE_WIDTH
-}, game_data::GameData};
 use crate::{GameAssets, brick_node::BrickNode};
+use crate::{
+    constants::{
+        BOARD_BRICK_NODE_COLS, BOARD_BRICK_NODE_ROWS, BRICK_NODE_GAP, BRICK_NODE_INNER_WIDTH,
+        BRICK_NODE_WIDTH, BRICKS_CONTAINER_HEIGHT, BRICKS_CONTAINER_WIDTH,
+    },
+    game_data::GameData,
+};
 
 #[derive(Component)]
 pub struct ScoreLabel;
@@ -44,13 +58,25 @@ pub struct NextLabel;
 pub struct MovingBrick;
 
 #[derive(Component)]
+pub struct NextBrickBoard;
+
+#[derive(Component)]
+pub struct NextBrick;
+
+#[derive(Component)]
 pub struct TimeText;
 
-fn spawn_brick_node(commands: &mut ChildBuilder, node: BrickNode) {
-    let x = -BRICKS_CONTAINER_WIDTH / 2. - 37.0
-        + (node.0 as f32 + 0.5) * BRICK_NODE_WIDTH
-        + (node.0 as f32) * BRICK_NODE_GAP;
-    let y = BRICKS_CONTAINER_HEIGHT / 2.
+fn spawn_next_brick_board(commands: &mut ChildBuilder) {
+    (0..4)
+        .flat_map(|i| (0..4).map(move |j| BrickNode(i, j)))
+        .for_each(|node| {
+            spawn_brick_node(commands, node, 60., 46.);
+        });
+}
+
+fn spawn_brick_node(commands: &mut ChildBuilder, node: BrickNode, offset_x: f32, offset_y: f32) {
+    let x = offset_x + (node.0 as f32 + 0.5) * BRICK_NODE_WIDTH + (node.0 as f32) * BRICK_NODE_GAP;
+    let y = offset_y
         - (node.1 as f32 + 0.5) * BRICK_NODE_WIDTH
         - (node.1 as f32) * BRICK_NODE_GAP
         - 3.0;
@@ -87,10 +113,17 @@ fn spawn_brick_node(commands: &mut ChildBuilder, node: BrickNode) {
 fn spawn_board_brick_nodes(commands: &mut ChildBuilder) {
     (0..BOARD_BRICK_NODE_COLS)
         .flat_map(|i| return (0..BOARD_BRICK_NODE_ROWS).map(move |j| BrickNode(i, j)))
-        .for_each(|node| spawn_brick_node(commands, node));
+        .for_each(|node| {
+            spawn_brick_node(
+                commands,
+                node,
+                -BRICKS_CONTAINER_WIDTH / 2. - 37.0,
+                BRICKS_CONTAINER_HEIGHT / 2.,
+            )
+        });
 }
 
-pub fn spawn_label(text: String, x: f32, y: f32) -> impl Bundle {
+fn spawn_label(text: String, x: f32, y: f32) -> impl Bundle {
     (
         Text2d::new(text),
         TextColor(Color::BLACK),
@@ -104,7 +137,7 @@ pub fn spawn_label(text: String, x: f32, y: f32) -> impl Bundle {
     )
 }
 
-pub fn spawn_text(text: String, x: f32, y: f32, font: Handle<Font>) -> impl Bundle {
+fn spawn_text(text: String, x: f32, y: f32, font: Handle<Font>) -> impl Bundle {
     (
         Text2d::new(text),
         TextColor(Color::BLACK),
@@ -128,7 +161,7 @@ pub fn board_setup(mut commands: Commands, game_assets: Res<GameAssets>) {
                     radii: Some(BorderRadii::single(2.0)),
                     ..shapes::Rectangle::default()
                 }),
-                transform: Transform::from_xyz(0.0, 90.0, 30.0),
+                transform: Transform::from_xyz(0.0, 90.0, 0.0),
                 ..default()
             },
             Fill::color(Srgba::hex("#fae36c").unwrap()),
@@ -211,12 +244,22 @@ pub fn board_setup(mut commands: Commands, game_assets: Res<GameAssets>) {
         .spawn(spawn_label("Next".into(), padding_x, 70.))
         .insert(NextLabel);
 
+    // next brick board
+    commands
+        .spawn((NextBrickBoard, Node { ..default() }))
+        .with_children(|child_builder| {
+            spawn_next_brick_board(child_builder);
+        });
+
     // time
+    let now = Local::now();
+    let hours = now.hour();
+    let minutes = now.minute();
     commands
         .spawn(spawn_text(
-            "00:00".into(),
+            format!("{}:{}", hours, minutes),
             padding_x,
-            20.,
+            -26.,
             game_assets.font.clone(),
         ))
         .insert(TimeText);
@@ -242,10 +285,8 @@ pub fn clock_update_system(
         let now = Local::now();
         let hours = now.hour();
         let minutes = now.minute();
-        let seconds = now.second();
         let mut text = time_text.into_inner();
         text.clear();
-        text.push_str(format!("{}:{}:{}", hours, minutes, seconds).as_str());
+        text.push_str(format!("{}:{}", hours, minutes).as_str());
     }
-    
 }

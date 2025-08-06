@@ -2,18 +2,21 @@ use bevy::{
     color::Color,
     ecs::{
         component::Component,
-        system::{Commands, Query, Res, Single},
+        system::{Commands, Query, Res, ResMut, Single},
     },
     hierarchy::BuildChildren,
     input::{mouse::MouseButton, ButtonInput},
     math::{Vec2, Vec3},
     sprite::Sprite,
+    state::state::NextState,
     text::{FontSmoothing, JustifyText, Text2d, TextColor, TextFont, TextLayout},
-    transform::components::Transform, window::Window,
+    transform::components::Transform,
+    window::Window,
 };
 
-use crate::GameAssets;
+use crate::{GameAssets, state::GameSate};
 
+#[derive(PartialEq, Eq)]
 pub enum ButtonName {
     RotateButton,
     RightButton,
@@ -27,7 +30,6 @@ pub enum ButtonName {
 
 #[derive(Component)]
 pub struct ControlButton(ButtonName);
-
 
 fn is_hit_button(button_center: Vec2, point: Vec2, r: f32) -> bool {
     button_center.distance(point) <= r
@@ -264,7 +266,10 @@ pub fn control_on_click(
         for (control_button, mut sprite, transform) in query.iter_mut() {
             let button_size = sprite.custom_size.unwrap();
             let is_hit = is_hit_button(
-                Vec2 {x: transform.translation.x, y: transform.translation.y },
+                Vec2 {
+                    x: transform.translation.x,
+                    y: transform.translation.y,
+                },
                 mouse_world_pos,
                 button_size.x / 2.0,
             );
@@ -296,8 +301,11 @@ pub fn control_on_click(
         for (control_button, mut sprite, transform) in query.iter_mut() {
             let button_size = sprite.custom_size.unwrap();
             let is_hit = is_hit_button(
-                Vec2 {x: transform.translation.x, y:  transform.translation.y },
-            mouse_world_pos,
+                Vec2 {
+                    x: transform.translation.x,
+                    y: transform.translation.y,
+                },
+                mouse_world_pos,
                 button_size.x / 2.0,
             );
             if !is_hit {
@@ -316,6 +324,35 @@ pub fn control_on_click(
                 }
                 _ => {
                     sprite.image = game_assets.replay_button.clone();
+                }
+            }
+        }
+    }
+}
+
+pub fn control_drop_on_click(
+    mut next_state: ResMut<NextState<GameSate>>,
+    window: Single<&Window>,
+    mouse_button_input: Res<ButtonInput<MouseButton>>,
+    query: Query<(&Transform, &ControlButton, &Sprite)>,
+) {
+    if mouse_button_input.just_pressed(MouseButton::Left) {
+        for (transform, control_button, sprite) in query.iter() {
+            if control_button.0 == ButtonName::DropButton {
+                let mouse_pos = window.cursor_position().unwrap();
+                let mouse_world_pos = Vec2::new(
+                    mouse_pos.x - window.width() / 2.0,
+                    window.height() / 2.0 - mouse_pos.y,
+                );
+                if is_hit_button(
+                    Vec2 {
+                        x: transform.translation.x,
+                        y: transform.translation.y,
+                    },
+                    mouse_world_pos,
+                    sprite.custom_size.unwrap().x / 2.0,
+                ) {
+                    next_state.set(GameSate::Playing);
                 }
             }
         }

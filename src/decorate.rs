@@ -57,7 +57,7 @@ pub fn decorate_setup(mut commands: Commands, window: Single<&Window>) {
     commands.spawn((
         ShapeBundle {
             path: GeometryBuilder::build_as(&board_border_rect),
-            transform: Transform::from_xyz(0.0, 90.0, 20.0),
+            transform: Transform::from_xyz(0.0, 90.0, 0.0),
             ..default()
         },
         Stroke::new(Color::BLACK, 4.0),

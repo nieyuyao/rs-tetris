@@ -21,9 +21,10 @@ pub const BRICKS_CONTAINER_HEIGHT: f32 = 284.0;
 
 pub const TIMER_FALLING_SECS: f32 = 0.725;
 
+pub const DINO_ANIMATION_SECONDS: u8 = 10;
+
 lazy_static! {
     pub static ref BRICKS_DICT: Vec<Vec<Brick>> = vec![
-        //O:
         vec![Brick {
             nodes: [
                 BrickNode(1, 1),
@@ -32,7 +33,6 @@ lazy_static! {
                 BrickNode(2, 2),
             ],
         }],
-        //I:
         vec![
             Brick {
                 nodes: [
@@ -51,7 +51,6 @@ lazy_static! {
                 ],
             },
         ],
-        //J:
         vec![
             Brick {
                 nodes: [
@@ -86,7 +85,6 @@ lazy_static! {
                 ],
             },
         ],
-        //L:
         vec![
             Brick {
                 nodes: [
@@ -121,7 +119,6 @@ lazy_static! {
                 ],
             },
         ],
-        //S:
         vec![
             Brick {
                 nodes: [
@@ -140,7 +137,6 @@ lazy_static! {
                 ],
             },
         ],
-        //Z:
         vec![
             Brick {
                 nodes: [

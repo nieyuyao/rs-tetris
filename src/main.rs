@@ -1,18 +1,26 @@
+mod animation;
 mod board;
+mod brick;
 mod brick_node;
 mod constants;
 mod control;
 mod decorate;
 mod game_data;
 mod state;
-mod brick;
 
 use bevy::{prelude::*, window::WindowResolution};
-use bevy_prototype_lyon::plugin::ShapePlugin;
+use bevy_prototype_lyon::{plugin::ShapePlugin};
 use game_data::GameData;
 use state::GameSate;
+use std::time::Duration;
 
-use crate::{board::{board_setup, clock_update_system, move_brick_system}, constants::DESIGN_SIZE, control::{control_on_click, control_setup}, decorate::decorate_setup};
+use crate::{
+    animation::{AnimationIndices, AnimationTimer, play_ready_animation},
+    board::{board_setup, clock_update_system, move_brick_system},
+    constants::DESIGN_SIZE,
+    control::{control_drop_on_click, control_on_click, control_setup},
+    decorate::decorate_setup,
+};
 
 fn scene_setup(mut commands: Commands) {
     commands.spawn(Camera2d);
@@ -26,10 +34,13 @@ pub struct GameAssets {
     replay_button_pressed: Handle<Image>,
     effect_button: Handle<Image>,
     effect_button_pressed: Handle<Image>,
-    font: Handle<Font>
+    volume: Handle<Image>,
+    pause: Handle<Image>,
+    dino: Handle<Image>,
+    font: Handle<Font>,
 }
 
-fn load_assets(mut commands: Commands, asset_server: Res<AssetServer>) {
+fn load_assets(mut commands: Commands, asset_server: Res<AssetServer>, mut next_state: ResMut<NextState<GameSate>>) {
     commands.insert_resource(GameAssets {
         move_button: asset_server.load("../assets/move_button.png"),
         move_button_pressed: asset_server.load("../assets/move_button_pressed.png"),
@@ -37,8 +48,50 @@ fn load_assets(mut commands: Commands, asset_server: Res<AssetServer>) {
         replay_button_pressed: asset_server.load("../assets/replay_button_pressed.png"),
         effect_button: asset_server.load("../assets/effect_button.png"),
         effect_button_pressed: asset_server.load("../assets/effect_button_pressed.png"),
-        font: asset_server.load("../assets/digital7mono.ttf")
+        pause: asset_server.load("../assets/pause.png"),
+        volume: asset_server.load("../assets/volume.png"),
+        dino: asset_server.load("../assets/dino.png"),
+        font: asset_server.load("../assets/digital7mono.ttf"),
     });
+
+    next_state.set(GameSate::Ready);
+}
+
+fn start_game(
+    mut commands: Commands,
+    query: Single<Entity, (With<Sprite>, With<AnimationIndices>)>,
+) {
+    println!("start game!!!");
+    let ready_animation_entity = query.into_inner();
+    commands.entity(ready_animation_entity).despawn();
+}
+
+fn ready_game(mut game_data: ResMut<GameData>) {
+    game_data.playing_ready_animation_duration = Duration::default();
+    game_data.is_playing_dino_running_animation = true;
+}
+
+fn spawn_ready_animation_sprite(
+    mut commands: Commands,
+    game_assets: Res<GameAssets>,
+    mut texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
+) {
+    let texture = game_assets.dino.clone();
+    let layout = TextureAtlasLayout::from_grid(UVec2::new(80, 86), 4, 1, None, None);
+    let texture_atlas_layout = texture_atlas_layouts.add(layout);
+    let animation_indices = AnimationIndices { first: 2, last: 3 };
+    commands.spawn((
+        Sprite::from_atlas_image(
+            texture,
+            TextureAtlas {
+                layout: texture_atlas_layout,
+                index: animation_indices.first,
+            },
+        ),
+        Transform::from_xyz(-40., 120., 180.),
+        animation_indices,
+        AnimationTimer(Timer::from_seconds(0.1, TimerMode::Repeating)),
+    ));
 }
 
 fn main() {
@@ -57,10 +110,18 @@ fn main() {
         .init_state::<GameSate>()
         .insert_resource(game_data)
         .add_systems(PreStartup, load_assets)
-        .add_systems(Startup, scene_setup)
-        .add_systems(Startup, (decorate_setup, control_setup, board_setup))
-        .add_systems(Update, control_on_click)
+        .add_systems(Startup, (scene_setup, decorate_setup, control_setup, board_setup).chain())
+        .add_systems(
+            OnEnter(GameSate::Ready),
+            (ready_game, spawn_ready_animation_sprite),
+        )
+        .add_systems(OnEnter(GameSate::Playing), start_game)
+        .add_systems(Update, control_on_click.run_if(in_state(GameSate::Playing)))
         .add_systems(Update, move_brick_system)
         .add_systems(Update, clock_update_system)
+        .add_systems(
+            Update,
+            (play_ready_animation, control_drop_on_click).run_if(in_state(GameSate::Ready)),
+        )
         .run();
 }
