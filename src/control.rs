@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use bevy::{
     color::Color,
     ecs::{
@@ -6,9 +8,9 @@ use bevy::{
         system::{Commands, Query, Res, ResMut, Single},
     },
     hierarchy::BuildChildren,
-    input::{mouse::MouseButton, ButtonInput},
-    math::{self, Vec2, Vec3},
-    render::view::{visibility, Visibility},
+    input::{ButtonInput, mouse::MouseButton},
+    math::{Vec2, Vec3},
+    render::view::Visibility,
     sprite::Sprite,
     state::state::NextState,
     text::{FontSmoothing, JustifyText, Text2d, TextColor, TextFont, TextLayout},
@@ -17,7 +19,7 @@ use bevy::{
 };
 
 use crate::{
-    board::FallingBrickNode, brick::{get_brick_node_position, Brick, BrickNode, BrickShape}, constants::{BOARD_BRICK_NODE_COLS, BRICK_NODE_WIDTH}, game_data::GameData, state::GameSate, GameAssets
+    board::FallingBrickNode, brick::{get_brick_node_position, Brick, BrickNode}, constants::{BOARD_BRICK_NODE_COLS, BRICK_NODE_WIDTH, TIMER_FALLING_SECS, TIMER_FALLING_SPEED_UP_SECS}, game_data::GameData, state::GameSate, GameAssets
 };
 
 #[derive(PartialEq, Eq)]
@@ -479,7 +481,7 @@ pub fn control_game_system(
                     } else if (bounding.1 as usize) >= BOARD_BRICK_NODE_COLS {
                         game_data
                             .falling_brick_node
-                            .move_left_steps(BOARD_BRICK_NODE_COLS as i8 - bounding.1);
+                            .move_right_steps(BOARD_BRICK_NODE_COLS as i8 - bounding.1);
                     }
                     if bounding.3 < 0 {
                         game_data.falling_brick_node.move_up_steps(-bounding.3);
@@ -491,7 +493,9 @@ pub fn control_game_system(
                         node.1 = game_data.falling_brick_node.1 - node.1;
                     });
 
-                    for (i, (mut transform, mut brick_node, mut visibility)) in falling_brick_query.iter_mut().enumerate() {
+                    for (i, (mut transform, mut brick_node, mut visibility)) in
+                        falling_brick_query.iter_mut().enumerate()
+                    {
                         let pos = get_brick_node_position(&new_falling_brick.nodes[i]);
                         transform.translation.x = pos.x;
                         transform.translation.y = pos.y;
@@ -504,6 +508,16 @@ pub fn control_game_system(
                             Visibility::Hidden
                         };
                     }
+                }
+                ButtonName::DropButton => {
+                    if game_data.is_speed_up_falling {
+                        return;
+                    }
+                    println!("click drop button");
+                    game_data.is_speed_up_falling = true;
+                    game_data
+                        .falling_timer
+                        .set_duration(Duration::from_secs_f32(TIMER_FALLING_SPEED_UP_SECS));
                 }
                 _ => {}
             }

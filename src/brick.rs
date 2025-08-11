@@ -26,10 +26,6 @@ impl BrickNode {
         self.0 += steps;
     }
 
-    pub fn move_down_steps(&mut self, steps: i8) {
-        self.1 -= steps;
-    }
-
     pub fn move_up_steps(&mut self, steps: i8) {
         self.1 += steps;
     }

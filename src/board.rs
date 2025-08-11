@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use bevy::{
     asset::Handle,
     color::{Color, Srgba},
@@ -6,13 +8,13 @@ use bevy::{
         component::Component,
         entity::Entity,
         query::{With, Without},
-        system::{Commands, Query, Res, ResMut, Single},
+        system::{Commands, ParamSet, Query, Res, ResMut, Single},
     },
     hierarchy::{BuildChildren, ChildBuild, ChildBuilder, Children, DespawnRecursiveExt},
     math::Vec2,
     render::view::Visibility,
     sprite::{Anchor, Sprite},
-    state::state::{NextState, State},
+    state::state::NextState,
     text::{Font, FontSmoothing, Text2d, TextColor, TextFont},
     time::Time,
     transform::components::Transform,
@@ -30,6 +32,7 @@ use chrono::{Local, Timelike};
 use crate::{
     GameAssets,
     brick::{Brick, BrickNode, BrickShape, get_brick_node_position},
+    constants::TIMER_FALLING_SECS,
     state::GameSate,
 };
 use crate::{
@@ -364,12 +367,18 @@ pub fn board_setup(mut commands: Commands, game_assets: Res<GameAssets>) {
         .insert(TimeText);
 }
 
-pub fn get_speed() {}
+pub fn get_speed(level: u32) -> f32 {
+    TIMER_FALLING_SECS * (0.85_f32).powi(level as i32) + level as f32 / 1000.0
+}
 
 pub fn get_score(level: u32, erase_lines: u32) -> u32 {
     assert!(0 < erase_lines);
     assert!(erase_lines <= 4);
     vec![40, 100, 300, 1200][(erase_lines - 1) as usize] * (level + 1)
+}
+
+pub fn get_level(clean_lines: u32) -> u32 {
+    (clean_lines / 10).min(99)
 }
 
 pub fn clock_update_system(
@@ -398,7 +407,7 @@ fn spawn_new_falling_brick(
         .entity(falling_brick_entity)
         .try_despawn_recursive();
     commands.entity(next_brick_entity).try_despawn_recursive();
-    game_data.falling_brick_node = BrickNode(5, 23);
+    game_data.falling_brick_node = game_data.new_falling_brick_node();
     game_data.falling_brick_shape = game_data.next_brick_shape;
     game_data.next_brick_shape = BrickShape::next();
     spawn_falling_brick(
@@ -420,7 +429,7 @@ pub fn falling_brick_system(
     next_brick_entity: Single<Entity, With<NextBrick>>,
     falling_brick_entity: Single<Entity, With<FallingBrick>>,
     mut board_brick_nodes_query: Query<
-        (&Children, &BrickNode),
+        (&mut Children, &BrickNode),
         (With<BoardBrickNode>, Without<FallingBrickNode>),
     >,
     mut fill_query: Query<&mut Fill>,
@@ -442,6 +451,10 @@ pub fn falling_brick_system(
             .any(|(_, __, node, ..)| game_data.board.is_move_to_bottom(node));
         if is_hit_bottom {
             game_data.freeze = true;
+            game_data.is_speed_up_falling = false;
+            game_data
+                .falling_timer
+                .set_duration(Duration::from_secs_f32(TIMER_FALLING_SECS));
 
             let is_hit_top = query
                 .iter()
@@ -453,19 +466,58 @@ pub fn falling_brick_system(
             }
 
             game_data.board.update_occupied_by_brick(&falling_brick);
-            // update board
-            for (children, node) in &mut board_brick_nodes_query {
-                if game_data.board.is_brick_node_occupied(node) {
+
+            let clean_lines = game_data.board.get_clean_lines();
+
+            if clean_lines.1 > 0 {
+                let start = clean_lines.0 as i8;
+                let lines = clean_lines.1 as i8;
+                for (children, node) in &mut board_brick_nodes_query {
+                    if node.1 < start {
+                        continue;
+                    }
+                    let is_occupied = if node.1 + lines >= BOARD_BRICK_NODE_ROWS as i8 {
+                        false
+                    } else {
+                        game_data
+                            .board
+                            .is_brick_node_occupied(&BrickNode(node.0, node.1 + lines))
+                    };
                     for child in children.iter() {
                         if let Ok(mut fill) = fill_query.get_mut(*child) {
-                            fill.color = Color::BLACK;
+                            fill.color = if is_occupied {
+                                Srgba::hex("#000000").unwrap().into()
+                            } else {
+                                Srgba::hex("#879372").unwrap().into()
+                            }
                         }
                         if let Ok(mut stroke) = stroke_query.get_mut(*child) {
-                            stroke.color = Color::BLACK;
+                            stroke.color = if is_occupied {
+                                Srgba::hex("#000000").unwrap().into()
+                            } else {
+                                Srgba::hex("#879372").unwrap().into()
+                            }
+                        }
+                    }
+                }
+                game_data.board.clean(clean_lines);
+                game_data.cleans += clean_lines.1 as u32;
+            } else {
+                // update board
+                for (children, node) in &mut board_brick_nodes_query {
+                    if game_data.board.is_brick_node_occupied(node) {
+                        for child in children.iter() {
+                            if let Ok(mut fill) = fill_query.get_mut(*child) {
+                                fill.color = Color::BLACK;
+                            }
+                            if let Ok(mut stroke) = stroke_query.get_mut(*child) {
+                                stroke.color = Color::BLACK;
+                            }
                         }
                     }
                 }
             }
+
             spawn_new_falling_brick(
                 &mut commands,
                 &mut game_data,
@@ -490,14 +542,39 @@ pub fn falling_brick_system(
 }
 
 pub fn score_board_system(
-    mut commands: Commands,
     mut game_data: ResMut<GameData>,
     mut next_state: ResMut<NextState<GameSate>>,
+    mut query: ParamSet<(
+        Single<&mut Text2d, With<LevelText>>,
+        Single<&mut Text2d, With<ScoreText>>,
+        Single<&mut Text2d, With<CleansText>>,
+    )>,
 ) {
     if !game_data.freeze {
         return;
     }
     game_data.freeze = false;
+
+    let level = get_level(game_data.cleans);
+
+    if game_data.level != level {
+        let mut level_text = query.p0().into_inner();
+        level_text.clear();
+        level_text.push_str(format!("{}", level).as_str());
+        game_data
+            .falling_timer
+            .set_duration(Duration::from_secs_f32(get_speed(level)));
+    }
+    if game_data.cleans > 0 {
+        let score = get_score(level, game_data.cleans);
+        let mut score_text = query.p1().into_inner();
+        score_text.clear();
+        score_text.push_str(format!("{}", score).as_str());
+
+        let mut cleans_text = query.p2().into_inner();
+        cleans_text.clear();
+        cleans_text.push_str(format!("{}", game_data.cleans).as_str());
+    }
 
     if game_data.is_game_over {
         //
@@ -505,6 +582,40 @@ pub fn score_board_system(
     }
 }
 
-pub fn game_over_system() {
+pub fn game_over_system(
+    mut commands: Commands,
+    mut game_data: ResMut<GameData>,
+    next_brick_entity: Single<Entity, With<NextBrick>>,
+    falling_brick_entity: Single<Entity, With<FallingBrick>>,
+    mut board_brick_nodes_query: Query<
+        &mut Children,
+        (With<BoardBrickNode>, Without<FallingBrickNode>),
+    >,
+    mut fill_query: Query<&mut Fill>,
+    mut stroke_query: Query<&mut Stroke>,
+    mut next_state: ResMut<NextState<GameSate>>,
+) {
     println!("Game Over");
+
+    commands
+        .entity(falling_brick_entity.into_inner())
+        .try_despawn_recursive();
+    commands
+        .entity(next_brick_entity.into_inner())
+        .try_despawn_recursive();
+
+    // reset board
+    for children in &mut board_brick_nodes_query {
+        for child in children.iter() {
+            if let Ok(mut fill) = fill_query.get_mut(*child) {
+                fill.color = Srgba::hex("#879372").unwrap().into();
+            }
+            if let Ok(mut stroke) = stroke_query.get_mut(*child) {
+                stroke.color = Srgba::hex("#879372").unwrap().into();
+            }
+        }
+    }
+
+    game_data.reset();
+    next_state.set(GameSate::Ready);
 }

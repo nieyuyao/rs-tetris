@@ -81,7 +81,7 @@ fn start_game(
     spawn_next_brick(&mut commands, game_data.next_brick_shape.into());
 }
 
-fn ready_game(mut game_data: ResMut<GameData>) {
+fn ready_game_system(mut game_data: ResMut<GameData>) {
     game_data.playing_ready_animation_duration = Duration::default();
     game_data.is_playing_dino_running_animation = true;
 }
@@ -135,7 +135,7 @@ fn main() {
         )
         .add_systems(
             OnEnter(GameSate::Ready),
-            (ready_game, spawn_ready_animation_sprite),
+            (ready_game_system, spawn_ready_animation_sprite),
         )
         .add_systems(OnEnter(GameSate::Playing), start_game)
         .add_systems(Update, control_on_click)

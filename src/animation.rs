@@ -1,9 +1,16 @@
 use std::time::Duration;
 
-use bevy::{ecs::{component::Component, system::{Res, ResMut, Single}}, prelude::{Deref, DerefMut}, sprite::Sprite, time::{Time, Timer}};
+use bevy::{
+    ecs::{
+        component::Component,
+        system::{Res, ResMut, Single},
+    },
+    prelude::{Deref, DerefMut},
+    sprite::Sprite,
+    time::{Time, Timer},
+};
 
 use crate::game_data::GameData;
-
 
 #[derive(Component)]
 pub struct AnimationIndices {
@@ -12,15 +19,17 @@ pub struct AnimationIndices {
 }
 
 #[derive(Component, Deref, DerefMut)]
-pub struct AnimationTimer(pub (crate) Timer);
+pub struct AnimationTimer(pub(crate) Timer);
 
 pub fn play_ready_animation(
     time: Res<Time>,
     mut game_data: ResMut<GameData>,
-    query: Single<(&mut AnimationIndices, &mut AnimationTimer, &mut Sprite)>
+    query: Single<(&mut AnimationIndices, &mut AnimationTimer, &mut Sprite)>,
 ) {
     let delta: std::time::Duration = time.delta();
-    game_data.playing_ready_animation_duration = game_data.playing_ready_animation_duration.saturating_add(delta);
+    game_data.playing_ready_animation_duration = game_data
+        .playing_ready_animation_duration
+        .saturating_add(delta);
 
     let (mut indices, mut timer, mut sprite) = query.into_inner();
 
