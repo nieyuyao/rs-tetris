@@ -4,12 +4,15 @@ use bevy::{
     ecs::{
         bundle::Bundle,
         component::Component,
-        query::With,
+        entity::Entity,
+        query::{With, Without},
         system::{Commands, Query, Res, ResMut, Single},
     },
-    hierarchy::{BuildChildren, ChildBuild, ChildBuilder},
+    hierarchy::{BuildChildren, ChildBuild, ChildBuilder, Children, DespawnRecursiveExt},
     math::Vec2,
-    sprite::Anchor,
+    render::view::Visibility,
+    sprite::{Anchor, Sprite},
+    state::state::{NextState, State},
     text::{Font, FontSmoothing, Text2d, TextColor, TextFont},
     time::Time,
     transform::components::Transform,
@@ -24,11 +27,16 @@ use bevy_prototype_lyon::{
 };
 use chrono::{Local, Timelike};
 
-use crate::{GameAssets, brick_node::BrickNode};
+use crate::{
+    GameAssets,
+    brick::{Brick, BrickNode, BrickShape, get_brick_node_position},
+    state::GameSate,
+};
 use crate::{
     constants::{
-        BOARD_BRICK_NODE_COLS, BOARD_BRICK_NODE_ROWS, BRICK_NODE_GAP, BRICK_NODE_INNER_WIDTH,
-        BRICK_NODE_WIDTH, BRICKS_CONTAINER_HEIGHT, BRICKS_CONTAINER_WIDTH,
+        BOARD_BRICK_NODE_COLS, BOARD_BRICK_NODE_ROWS, BRICK_NODE_WIDTH,
+        BRICKS_CONTAINER_BOUNDING_LEFT, BRICKS_CONTAINER_BOUNDING_TOP, BRICKS_CONTAINER_HEIGHT,
+        BRICKS_CONTAINER_WIDTH,
     },
     game_data::GameData,
 };
@@ -55,7 +63,10 @@ pub struct LevelText;
 pub struct NextLabel;
 
 #[derive(Component)]
-pub struct MovingBrick;
+pub struct FallingBrickNode;
+
+#[derive(Component)]
+pub struct FallingBrick;
 
 #[derive(Component)]
 pub struct NextBrickBoard;
@@ -64,22 +75,32 @@ pub struct NextBrickBoard;
 pub struct NextBrick;
 
 #[derive(Component)]
+pub struct BoardBrickNode;
+
+#[derive(Component)]
 pub struct TimeText;
 
 fn spawn_next_brick_board(commands: &mut ChildBuilder) {
     (0..4)
         .flat_map(|i| (0..4).map(move |j| BrickNode(i, j)))
         .for_each(|node| {
-            spawn_brick_node(commands, node, 60., 46.);
+            let x = 60.0 + (node.0 as f32 + 0.5) * BRICK_NODE_WIDTH;
+            let y = 43.0 - (node.1 as f32 + 0.5) * BRICK_NODE_WIDTH;
+            spawn_brick_node(commands, x, y, "#9ead86", "#879372", (), || false);
         });
 }
 
-fn spawn_brick_node(commands: &mut ChildBuilder, node: BrickNode, offset_x: f32, offset_y: f32) {
-    let x = offset_x + (node.0 as f32 + 0.5) * BRICK_NODE_WIDTH + (node.0 as f32) * BRICK_NODE_GAP;
-    let y = offset_y
-        - (node.1 as f32 + 0.5) * BRICK_NODE_WIDTH
-        - (node.1 as f32) * BRICK_NODE_GAP
-        - 3.0;
+fn spawn_brick_node<F>(
+    commands: &mut ChildBuilder,
+    x: f32,
+    y: f32,
+    fill_color: &str,
+    stroke_color: &str,
+    bundle: impl Bundle,
+    condition: F,
+) where
+    F: FnOnce() -> bool,
+{
     commands
         .spawn((
             ShapeBundle {
@@ -90,35 +111,56 @@ fn spawn_brick_node(commands: &mut ChildBuilder, node: BrickNode, offset_x: f32,
                     },
                     ..shapes::Rectangle::default()
                 }),
-                transform: Transform::from_xyz(x, y, 100.0),
+                transform: Transform::from_xyz(x, y, 80.0),
                 ..default()
             },
-            Stroke::new(Srgba::hex("#879372").unwrap(), 1.),
+            Fill::color(Srgba::hex(fill_color).unwrap()),
         ))
         .with_child((
             ShapeBundle {
                 path: GeometryBuilder::build_as(&shapes::Rectangle {
                     extents: Vec2 {
-                        x: BRICK_NODE_INNER_WIDTH as f32,
-                        y: BRICK_NODE_INNER_WIDTH as f32,
+                        x: BRICK_NODE_WIDTH - 2. as f32,
+                        y: BRICK_NODE_WIDTH - 2. as f32,
                     },
                     ..shapes::Rectangle::default()
                 }),
+                transform: Transform::from_xyz(0., 0., 100.0),
                 ..default()
             },
-            Fill::color(Srgba::hex("#879372").unwrap()),
-        ));
+            Stroke::new(Srgba::hex(stroke_color).unwrap(), 1.),
+        ))
+        .with_child((
+            ShapeBundle {
+                path: GeometryBuilder::build_as(&shapes::Rectangle {
+                    extents: Vec2 {
+                        x: BRICK_NODE_WIDTH - 6. as f32,
+                        y: BRICK_NODE_WIDTH - 6. as f32,
+                    },
+                    ..shapes::Rectangle::default()
+                }),
+                transform: Transform::from_xyz(0., 0., 120.0),
+                ..default()
+            },
+            Fill::color(Srgba::hex(stroke_color).unwrap()),
+        ))
+        .insert_if(bundle, condition);
 }
 
-fn spawn_board_brick_nodes(commands: &mut ChildBuilder) {
+fn spawn_board(commands: &mut ChildBuilder) {
     (0..BOARD_BRICK_NODE_COLS)
-        .flat_map(|i| return (0..BOARD_BRICK_NODE_ROWS).map(move |j| BrickNode(i, j)))
+        .flat_map(|i| return (0..BOARD_BRICK_NODE_ROWS).map(move |j| BrickNode(i as i8, j as i8)))
         .for_each(|node| {
+            let x = BRICKS_CONTAINER_BOUNDING_LEFT + (node.0 as f32 + 0.5) * BRICK_NODE_WIDTH;
+            let y = BRICKS_CONTAINER_BOUNDING_TOP - (20. - node.1 as f32 - 0.5) * BRICK_NODE_WIDTH;
             spawn_brick_node(
                 commands,
-                node,
-                -BRICKS_CONTAINER_WIDTH / 2. - 37.0,
-                BRICKS_CONTAINER_HEIGHT / 2.,
+                x,
+                y,
+                "#9ead86",
+                "#879372",
+                (BoardBrickNode, node.clone()),
+                || true,
             )
         });
 }
@@ -152,12 +194,59 @@ fn spawn_text(text: String, x: f32, y: f32, font: Handle<Font>) -> impl Bundle {
     )
 }
 
+pub fn spawn_next_brick(commands: &mut Commands, brick: Brick) {
+    commands
+        .spawn((NextBrick, Sprite { ..default() }))
+        .with_children(|child_builder| {
+            brick.nodes.iter().for_each(|node| {
+                let x = 60.0 + (node.0 as f32 + 0.5) * BRICK_NODE_WIDTH;
+                let y = 43.0 - (node.1 as f32 + 0.5) * BRICK_NODE_WIDTH;
+                spawn_brick_node(child_builder, x, y, "#9ead86", "#000000", (), || false);
+            });
+        });
+}
+
+pub fn spawn_falling_brick(
+    commands: &mut Commands,
+    mut brick: Brick,
+    falling_brick_node: BrickNode,
+) {
+    brick.nodes.iter_mut().for_each(|node| {
+        node.0 = falling_brick_node.0 + node.0;
+        node.1 = falling_brick_node.1 - node.1;
+    });
+    println!("spawn falling brick");
+    commands
+        .spawn((
+            Sprite {
+                color: Color::NONE,
+                ..default()
+            },
+            Transform::from_xyz(0., 0., 400.),
+            FallingBrick,
+        ))
+        .with_children(|child_builder| {
+            brick.nodes.iter().for_each(|node| {
+                let pos = get_brick_node_position(node);
+                spawn_brick_node(
+                    child_builder,
+                    pos.x,
+                    pos.y,
+                    "#9ead86",
+                    "#000000",
+                    (FallingBrickNode, node.clone(), Visibility::Hidden),
+                    || true,
+                );
+            });
+        });
+}
+
 pub fn board_setup(mut commands: Commands, game_assets: Res<GameAssets>) {
     commands
         .spawn((
             ShapeBundle {
                 path: GeometryBuilder::build_as(&shapes::Rectangle {
-                    extents: Vec2 { x: 232., y: 302. },
+                    extents: Vec2 { x: 248., y: 302. },
                     radii: Some(BorderRadii::single(2.0)),
                     ..shapes::Rectangle::default()
                 }),
@@ -170,7 +259,7 @@ pub fn board_setup(mut commands: Commands, game_assets: Res<GameAssets>) {
             child_builder.spawn((
                 ShapeBundle {
                     path: GeometryBuilder::build_as(&shapes::Rectangle {
-                        extents: Vec2 { x: 240., y: 298. },
+                        extents: Vec2 { x: 246., y: 298. },
                         radii: Some(BorderRadii::single(2.0)),
                         ..shapes::Rectangle::default()
                     }),
@@ -194,8 +283,18 @@ pub fn board_setup(mut commands: Commands, game_assets: Res<GameAssets>) {
                 },
                 Stroke::new(Color::BLACK, 2.0),
             ));
-            spawn_board_brick_nodes(child_builder);
         });
+
+    commands
+        .spawn((
+            Sprite {
+                color: Color::NONE,
+                ..default()
+            },
+            Transform::from_xyz(0.0, 0.0, 40.0),
+        ))
+        .with_children(spawn_board);
+
     // score
     let padding_x: f32 = 110.0;
     commands
@@ -265,8 +364,6 @@ pub fn board_setup(mut commands: Commands, game_assets: Res<GameAssets>) {
         .insert(TimeText);
 }
 
-pub fn move_brick_system(time: Res<Time>, mut query: Query<(&MovingBrick)>) {}
-
 pub fn get_speed() {}
 
 pub fn get_score(level: u32, erase_lines: u32) -> u32 {
@@ -289,4 +386,125 @@ pub fn clock_update_system(
         text.clear();
         text.push_str(format!("{}:{}", hours, minutes).as_str());
     }
+}
+
+fn spawn_new_falling_brick(
+    commands: &mut Commands,
+    game_data: &mut ResMut<GameData>,
+    next_brick_entity: Entity,
+    falling_brick_entity: Entity,
+) {
+    commands
+        .entity(falling_brick_entity)
+        .try_despawn_recursive();
+    commands.entity(next_brick_entity).try_despawn_recursive();
+    game_data.falling_brick_node = BrickNode(5, 23);
+    game_data.falling_brick_shape = game_data.next_brick_shape;
+    game_data.next_brick_shape = BrickShape::next();
+    spawn_falling_brick(
+        commands,
+        game_data.falling_brick_shape.into(),
+        game_data.falling_brick_node,
+    );
+    spawn_next_brick(commands, game_data.next_brick_shape.into());
+}
+
+pub fn falling_brick_system(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut game_data: ResMut<GameData>,
+    mut query: Query<
+        (Entity, &mut Transform, &mut BrickNode, &mut Visibility),
+        With<FallingBrickNode>,
+    >,
+    next_brick_entity: Single<Entity, With<NextBrick>>,
+    falling_brick_entity: Single<Entity, With<FallingBrick>>,
+    mut board_brick_nodes_query: Query<
+        (&Children, &BrickNode),
+        (With<BoardBrickNode>, Without<FallingBrickNode>),
+    >,
+    mut fill_query: Query<&mut Fill>,
+    mut stroke_query: Query<&mut Stroke>,
+) {
+    let falling_brick_shape = game_data.falling_brick_shape;
+    let mut falling_brick: Brick = falling_brick_shape.into();
+    falling_brick.nodes.iter_mut().for_each(|node| {
+        node.0 = game_data.falling_brick_node.0 + node.0;
+        node.1 = game_data.falling_brick_node.1 - node.1;
+    });
+    let ticked = game_data.falling_timer.tick(time.delta()).finished();
+    if ticked {
+        if game_data.freeze {
+            return;
+        }
+        let is_hit_bottom = query
+            .iter()
+            .any(|(_, __, node, ..)| game_data.board.is_move_to_bottom(node));
+        if is_hit_bottom {
+            game_data.freeze = true;
+
+            let is_hit_top = query
+                .iter()
+                .any(|(_, __, node, ..)| game_data.board.is_move_to_top(node));
+
+            if is_hit_top {
+                game_data.is_game_over = true;
+                return;
+            }
+
+            game_data.board.update_occupied_by_brick(&falling_brick);
+            // update board
+            for (children, node) in &mut board_brick_nodes_query {
+                if game_data.board.is_brick_node_occupied(node) {
+                    for child in children.iter() {
+                        if let Ok(mut fill) = fill_query.get_mut(*child) {
+                            fill.color = Color::BLACK;
+                        }
+                        if let Ok(mut stroke) = stroke_query.get_mut(*child) {
+                            stroke.color = Color::BLACK;
+                        }
+                    }
+                }
+            }
+            spawn_new_falling_brick(
+                &mut commands,
+                &mut game_data,
+                falling_brick_entity.into_inner(),
+                next_brick_entity.into_inner(),
+            );
+        } else {
+            game_data.falling_brick_node.move_down();
+            for (_, mut transform, mut brick_node, mut visibility) in query.iter_mut() {
+                transform.translation.y -= BRICK_NODE_WIDTH;
+
+                brick_node.move_down();
+
+                *visibility = if game_data.board.is_brick_node_in_board(&brick_node) {
+                    Visibility::Visible
+                } else {
+                    Visibility::Hidden
+                };
+            }
+        }
+    }
+}
+
+pub fn score_board_system(
+    mut commands: Commands,
+    mut game_data: ResMut<GameData>,
+    mut next_state: ResMut<NextState<GameSate>>,
+) {
+    if !game_data.freeze {
+        return;
+    }
+    game_data.freeze = false;
+
+    if game_data.is_game_over {
+        //
+        next_state.set(GameSate::GameOver);
+    }
+}
+
+pub fn game_over_system() {
+    println!("Game Over");
 }

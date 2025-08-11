@@ -1,19 +1,15 @@
 use bevy::math::Vec2;
 use lazy_static::lazy_static;
 
-use crate::{brick::Brick, brick_node::BrickNode};
+use crate::brick::{Brick, BrickNode };
 
 pub const DESIGN_SIZE: Vec2 = Vec2 { x: 360.0, y: 540.0 };
 
-pub const BOARD_BRICK_NODE_ROWS: i8 = 20;
+pub const BOARD_BRICK_NODE_ROWS: usize = 20;
 
-pub const BOARD_BRICK_NODE_COLS: i8 = 10;
+pub const BOARD_BRICK_NODE_COLS: usize = 10;
 
-pub const BRICK_NODE_WIDTH: f32 = 12.;
-
-pub const BRICK_NODE_INNER_WIDTH: f32 = 8.;
-
-pub const BRICK_NODE_GAP: f32 = 2.;
+pub const BRICK_NODE_WIDTH: f32 = 14.;
 
 pub const BRICKS_CONTAINER_WIDTH: f32 = 144.0;
 
@@ -21,7 +17,13 @@ pub const BRICKS_CONTAINER_HEIGHT: f32 = 284.0;
 
 pub const TIMER_FALLING_SECS: f32 = 0.725;
 
-pub const DINO_ANIMATION_SECONDS: u8 = 10;
+pub const BRICKS_CONTAINER_BOUNDING_LEFT: f32 = -109.;
+
+pub const BRICKS_CONTAINER_BOUNDING_TOP: f32 = 229.;
+
+pub const BRICKS_CONTAINER_BOUNDING_RIGHT: f32 = -9.;
+
+pub const BRICKS_CONTAINER_BOUNDING_BOTTOM: f32 = -51.;
 
 lazy_static! {
     pub static ref BRICKS_DICT: Vec<Vec<Brick>> = vec![

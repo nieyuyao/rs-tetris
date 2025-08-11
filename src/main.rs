@@ -1,7 +1,6 @@
 mod animation;
 mod board;
 mod brick;
-mod brick_node;
 mod constants;
 mod control;
 mod decorate;
@@ -9,16 +8,19 @@ mod game_data;
 mod state;
 
 use bevy::{prelude::*, window::WindowResolution};
-use bevy_prototype_lyon::{plugin::ShapePlugin};
+use bevy_prototype_lyon::plugin::ShapePlugin;
 use game_data::GameData;
 use state::GameSate;
 use std::time::Duration;
 
 use crate::{
-    animation::{AnimationIndices, AnimationTimer, play_ready_animation},
-    board::{board_setup, clock_update_system, move_brick_system},
+    animation::{play_ready_animation, AnimationIndices, AnimationTimer},
+    board::{
+        board_setup, clock_update_system, falling_brick_system, game_over_system, score_board_system, spawn_falling_brick, spawn_next_brick
+    },
+    brick::BrickShape,
     constants::DESIGN_SIZE,
-    control::{control_drop_on_click, control_on_click, control_setup},
+    control::{control_drop_to_start_game, control_game_system, control_on_click, control_setup},
     decorate::decorate_setup,
 };
 
@@ -40,7 +42,11 @@ pub struct GameAssets {
     font: Handle<Font>,
 }
 
-fn load_assets(mut commands: Commands, asset_server: Res<AssetServer>, mut next_state: ResMut<NextState<GameSate>>) {
+fn load_assets(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    mut next_state: ResMut<NextState<GameSate>>,
+) {
     commands.insert_resource(GameAssets {
         move_button: asset_server.load("../assets/move_button.png"),
         move_button_pressed: asset_server.load("../assets/move_button_pressed.png"),
@@ -60,10 +66,19 @@ fn load_assets(mut commands: Commands, asset_server: Res<AssetServer>, mut next_
 fn start_game(
     mut commands: Commands,
     query: Single<Entity, (With<Sprite>, With<AnimationIndices>)>,
+    mut game_data: ResMut<GameData>,
 ) {
     println!("start game!!!");
     let ready_animation_entity = query.into_inner();
     commands.entity(ready_animation_entity).despawn();
+    game_data.falling_brick_shape = BrickShape::rand();
+    game_data.next_brick_shape = BrickShape::rand();
+    spawn_falling_brick(
+        &mut commands,
+        game_data.falling_brick_shape.into(),
+        game_data.falling_brick_node,
+    );
+    spawn_next_brick(&mut commands, game_data.next_brick_shape.into());
 }
 
 fn ready_game(mut game_data: ResMut<GameData>) {
@@ -88,10 +103,14 @@ fn spawn_ready_animation_sprite(
                 index: animation_indices.first,
             },
         ),
-        Transform::from_xyz(-40., 120., 180.),
+        Transform::from_xyz(-40., 120., 300.),
         animation_indices,
         AnimationTimer(Timer::from_seconds(0.1, TimerMode::Repeating)),
     ));
+}
+
+fn pause_game_system() {
+    // TODO:
 }
 
 fn main() {
@@ -110,18 +129,31 @@ fn main() {
         .init_state::<GameSate>()
         .insert_resource(game_data)
         .add_systems(PreStartup, load_assets)
-        .add_systems(Startup, (scene_setup, decorate_setup, control_setup, board_setup).chain())
+        .add_systems(
+            Startup,
+            (scene_setup, decorate_setup, control_setup, board_setup).chain(),
+        )
         .add_systems(
             OnEnter(GameSate::Ready),
             (ready_game, spawn_ready_animation_sprite),
         )
         .add_systems(OnEnter(GameSate::Playing), start_game)
-        .add_systems(Update, control_on_click.run_if(in_state(GameSate::Playing)))
-        .add_systems(Update, move_brick_system)
+        .add_systems(Update, control_on_click)
+        .add_systems(
+            Update,
+            (
+                control_game_system,
+                falling_brick_system,
+                score_board_system,
+            )
+                .run_if(in_state(GameSate::Playing)),
+        )
         .add_systems(Update, clock_update_system)
         .add_systems(
             Update,
-            (play_ready_animation, control_drop_on_click).run_if(in_state(GameSate::Ready)),
+            (play_ready_animation, control_drop_to_start_game).run_if(in_state(GameSate::Ready)),
         )
+        .add_systems(OnEnter(GameSate::Paused), pause_game_system)
+        .add_systems(OnEnter(GameSate::GameOver), game_over_system)
         .run();
 }
