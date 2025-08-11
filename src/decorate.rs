@@ -8,7 +8,7 @@ use bevy::window::Window;
 use bevy::{color::Srgba, ecs::system::Single};
 use bevy_prototype_lyon::{
     prelude::*,
-    shapes::{self, BorderRadii, RectangleOrigin},
+    shapes::{BorderRadii},
 };
 
 use crate::constants::DESIGN_SIZE;

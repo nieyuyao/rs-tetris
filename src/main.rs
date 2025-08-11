@@ -14,13 +14,17 @@ use state::GameSate;
 use std::time::Duration;
 
 use crate::{
-    animation::{play_ready_animation, AnimationIndices, AnimationTimer},
+    animation::{AnimationIndices, AnimationTimer, play_ready_animation},
     board::{
-        board_setup, clock_update_system, falling_brick_system, game_over_system, score_board_system, spawn_falling_brick, spawn_next_brick
+        board_setup, clock_update_system, falling_brick_system, game_over_system,
+        score_board_system, spawn_falling_brick, spawn_next_brick,
     },
     brick::BrickShape,
     constants::DESIGN_SIZE,
-    control::{control_drop_to_start_game, control_game_system, control_on_click, control_setup},
+    control::{
+        control_direction_system, control_drop_to_start_game, control_on_click, control_setup,
+        pause_game_system, replay_game_system,
+    },
     decorate::decorate_setup,
 };
 
@@ -109,10 +113,6 @@ fn spawn_ready_animation_sprite(
     ));
 }
 
-fn pause_game_system() {
-    // TODO:
-}
-
 fn main() {
     let game_data = GameData::default();
     App::new()
@@ -142,9 +142,11 @@ fn main() {
         .add_systems(
             Update,
             (
-                control_game_system,
+                control_direction_system,
                 falling_brick_system,
                 score_board_system,
+                replay_game_system,
+                pause_game_system,
             )
                 .run_if(in_state(GameSate::Playing)),
         )
@@ -153,7 +155,6 @@ fn main() {
             Update,
             (play_ready_animation, control_drop_to_start_game).run_if(in_state(GameSate::Ready)),
         )
-        .add_systems(OnEnter(GameSate::Paused), pause_game_system)
         .add_systems(OnEnter(GameSate::GameOver), game_over_system)
         .run();
 }

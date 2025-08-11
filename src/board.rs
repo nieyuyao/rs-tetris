@@ -18,7 +18,6 @@ use bevy::{
     text::{Font, FontSmoothing, Text2d, TextColor, TextFont},
     time::Time,
     transform::components::Transform,
-    ui::Node,
     utils::default,
 };
 use bevy_prototype_lyon::{
@@ -348,7 +347,7 @@ pub fn board_setup(mut commands: Commands, game_assets: Res<GameAssets>) {
 
     // next brick board
     commands
-        .spawn((NextBrickBoard, Node { ..default() }))
+        .spawn((NextBrickBoard, Sprite { ..default() }))
         .with_children(|child_builder| {
             spawn_next_brick_board(child_builder);
         });
@@ -397,16 +396,10 @@ pub fn clock_update_system(
     }
 }
 
-fn spawn_new_falling_brick(
+pub fn spawn_new_falling_brick(
     commands: &mut Commands,
     game_data: &mut ResMut<GameData>,
-    next_brick_entity: Entity,
-    falling_brick_entity: Entity,
 ) {
-    commands
-        .entity(falling_brick_entity)
-        .try_despawn_recursive();
-    commands.entity(next_brick_entity).try_despawn_recursive();
     game_data.falling_brick_node = game_data.new_falling_brick_node();
     game_data.falling_brick_shape = game_data.next_brick_shape;
     game_data.next_brick_shape = BrickShape::next();
@@ -435,6 +428,9 @@ pub fn falling_brick_system(
     mut fill_query: Query<&mut Fill>,
     mut stroke_query: Query<&mut Stroke>,
 ) {
+    if game_data.paused {
+        return;
+    }
     let falling_brick_shape = game_data.falling_brick_shape;
     let mut falling_brick: Brick = falling_brick_shape.into();
     falling_brick.nodes.iter_mut().for_each(|node| {
@@ -518,11 +514,14 @@ pub fn falling_brick_system(
                 }
             }
 
+            commands
+                .entity(falling_brick_entity.into_inner())
+                .try_despawn_recursive();
+            commands.entity(next_brick_entity.into_inner()).try_despawn_recursive();
+
             spawn_new_falling_brick(
                 &mut commands,
                 &mut game_data,
-                falling_brick_entity.into_inner(),
-                next_brick_entity.into_inner(),
             );
         } else {
             game_data.falling_brick_node.move_down();
@@ -550,6 +549,9 @@ pub fn score_board_system(
         Single<&mut Text2d, With<CleansText>>,
     )>,
 ) {
+    if game_data.paused {
+        return;
+    }
     if !game_data.freeze {
         return;
     }
@@ -582,21 +584,18 @@ pub fn score_board_system(
     }
 }
 
-pub fn game_over_system(
-    mut commands: Commands,
-    mut game_data: ResMut<GameData>,
-    next_brick_entity: Single<Entity, With<NextBrick>>,
+pub fn reset_game(
+    commands: &mut Commands,
     falling_brick_entity: Single<Entity, With<FallingBrick>>,
+    next_brick_entity: Single<Entity, With<NextBrick>>,
     mut board_brick_nodes_query: Query<
         &mut Children,
         (With<BoardBrickNode>, Without<FallingBrickNode>),
     >,
     mut fill_query: Query<&mut Fill>,
     mut stroke_query: Query<&mut Stroke>,
-    mut next_state: ResMut<NextState<GameSate>>,
+    game_data: &mut ResMut<GameData>,
 ) {
-    println!("Game Over");
-
     commands
         .entity(falling_brick_entity.into_inner())
         .try_despawn_recursive();
@@ -617,5 +616,30 @@ pub fn game_over_system(
     }
 
     game_data.reset();
+}
+
+pub fn game_over_system(
+    mut commands: Commands,
+    mut game_data: ResMut<GameData>,
+    next_brick_entity: Single<Entity, With<NextBrick>>,
+    falling_brick_entity: Single<Entity, With<FallingBrick>>,
+    board_brick_nodes_query: Query<
+        &mut Children,
+        (With<BoardBrickNode>, Without<FallingBrickNode>),
+    >,
+    fill_query: Query<&mut Fill>,
+    stroke_query: Query<&mut Stroke>,
+    mut next_state: ResMut<NextState<GameSate>>,
+) {
+    println!("Game Over");
+    reset_game(
+        &mut commands,
+        falling_brick_entity,
+        next_brick_entity,
+        board_brick_nodes_query,
+        fill_query,
+        stroke_query,
+        &mut game_data,
+    );
     next_state.set(GameSate::Ready);
 }

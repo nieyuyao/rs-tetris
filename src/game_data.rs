@@ -132,6 +132,7 @@ pub struct GameData {
     pub freeze: bool,
     pub is_game_over: bool,
     pub is_speed_up_falling: bool,
+    pub paused: bool
 }
 
 impl GameData {
@@ -151,6 +152,7 @@ impl GameData {
             freeze: false,
             is_game_over: false,
             is_speed_up_falling: false,
+            paused: false,
         }
     }
 
@@ -171,6 +173,7 @@ impl GameData {
         self.is_playing_dino_running_animation = true;
         self.falling_timer = Timer::from_seconds(TIMER_FALLING_SECS, TimerMode::Repeating);
         self.is_speed_up_falling = false;
+        self.paused = false;
     }
 }
 

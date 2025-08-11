@@ -8,6 +8,5 @@ pub enum GameSate {
     Loading,
     Ready,
     Playing,
-    Paused,
     GameOver,
 }

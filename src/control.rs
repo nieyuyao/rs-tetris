@@ -4,10 +4,11 @@ use bevy::{
     color::Color,
     ecs::{
         component::Component,
+        entity::Entity,
         query::{With, Without},
         system::{Commands, Query, Res, ResMut, Single},
     },
-    hierarchy::BuildChildren,
+    hierarchy::{BuildChildren, Children},
     input::{ButtonInput, mouse::MouseButton},
     math::{Vec2, Vec3},
     render::view::Visibility,
@@ -17,22 +18,37 @@ use bevy::{
     transform::components::Transform,
     window::Window,
 };
+use bevy_prototype_lyon::draw::{Fill, Stroke};
 
 use crate::{
-    board::FallingBrickNode, brick::{get_brick_node_position, Brick, BrickNode}, constants::{BOARD_BRICK_NODE_COLS, BRICK_NODE_WIDTH, TIMER_FALLING_SECS, TIMER_FALLING_SPEED_UP_SECS}, game_data::GameData, state::GameSate, GameAssets
+    GameAssets,
+    board::{
+        BoardBrickNode, FallingBrick, FallingBrickNode, NextBrick, reset_game,
+        spawn_new_falling_brick,
+    },
+    brick::{Brick, BrickNode, get_brick_node_position},
+    constants::{BOARD_BRICK_NODE_COLS, BRICK_NODE_WIDTH, TIMER_FALLING_SPEED_UP_SECS},
+    game_data::{GameData},
+    state::{GameSate},
 };
 
 #[derive(PartialEq, Eq)]
 pub enum ButtonName {
-    RotateButton,
-    RightButton,
-    DownButton,
-    LeftButton,
-    DropButton,
-    PauseButton,
-    SoundButton,
-    ReplayButton,
+    Rotate,
+    Right,
+    Down,
+    Left,
+    Drop,
+    Pause,
+    Sound,
+    Replay,
 }
+
+#[derive(Component)]
+pub struct PauseButton;
+
+#[derive(Component)]
+pub struct ReplayButton;
 
 #[derive(Component)]
 pub struct ControlButton(ButtonName);
@@ -62,7 +78,7 @@ pub fn control_setup(mut commands: Commands, game_assets: Res<GameAssets>) {
                 translation: Vec3::new(70.0, -113.0, 1.),
                 ..Transform::default()
             },
-            ControlButton(ButtonName::RotateButton),
+            ControlButton(ButtonName::Rotate),
         ))
         .with_child((
             Text2d::new("Rotate"),
@@ -87,7 +103,7 @@ pub fn control_setup(mut commands: Commands, game_assets: Res<GameAssets>) {
                 translation: Vec3::new(120.0, -160.0, 1.),
                 ..Transform::default()
             },
-            ControlButton(ButtonName::RightButton),
+            ControlButton(ButtonName::Right),
         ))
         .with_child((
             Text2d::new("Right"),
@@ -112,7 +128,7 @@ pub fn control_setup(mut commands: Commands, game_assets: Res<GameAssets>) {
                 translation: Vec3::new(70.0, -212.0, 1.),
                 ..Transform::default()
             },
-            ControlButton(ButtonName::DownButton),
+            ControlButton(ButtonName::Down),
         ))
         .with_child((
             Text2d::new("Down"),
@@ -137,7 +153,7 @@ pub fn control_setup(mut commands: Commands, game_assets: Res<GameAssets>) {
                 translation: Vec3::new(24.0, -160.0, 1.),
                 ..Transform::default()
             },
-            ControlButton(ButtonName::LeftButton),
+            ControlButton(ButtonName::Left),
         ))
         .with_child((
             Text2d::new("Left"),
@@ -162,7 +178,7 @@ pub fn control_setup(mut commands: Commands, game_assets: Res<GameAssets>) {
                 translation: Vec3::new(-86.0, -184.0, 1.),
                 ..Transform::default()
             },
-            ControlButton(ButtonName::DropButton),
+            ControlButton(ButtonName::Drop),
         ))
         .with_child((
             Text2d::new("Drop"),
@@ -191,7 +207,8 @@ pub fn control_setup(mut commands: Commands, game_assets: Res<GameAssets>) {
                 },
                 ..Transform::default()
             },
-            ControlButton(ButtonName::PauseButton),
+            ControlButton(ButtonName::Pause),
+            PauseButton,
         ))
         .with_child((
             Text2d::new("Pause"),
@@ -220,7 +237,7 @@ pub fn control_setup(mut commands: Commands, game_assets: Res<GameAssets>) {
                 },
                 ..Transform::default()
             },
-            ControlButton(ButtonName::SoundButton),
+            ControlButton(ButtonName::Sound),
         ))
         .with_child((
             Text2d::new("Sound"),
@@ -249,7 +266,8 @@ pub fn control_setup(mut commands: Commands, game_assets: Res<GameAssets>) {
                 },
                 ..Transform::default()
             },
-            ControlButton(ButtonName::ReplayButton),
+            ControlButton(ButtonName::Replay),
+            ReplayButton,
         ))
         .with_child((
             Text2d::new("Replay"),
@@ -290,14 +308,14 @@ pub fn control_on_click(
                 continue;
             }
             match control_button.0 {
-                ButtonName::DropButton
-                | ButtonName::RotateButton
-                | ButtonName::RightButton
-                | ButtonName::DownButton
-                | ButtonName::LeftButton => {
+                ButtonName::Drop
+                | ButtonName::Rotate
+                | ButtonName::Right
+                | ButtonName::Down
+                | ButtonName::Left => {
                     sprite.image = game_assets.move_button_pressed.clone();
                 }
-                ButtonName::PauseButton | ButtonName::SoundButton => {
+                ButtonName::Pause | ButtonName::Sound => {
                     sprite.image = game_assets.effect_button_pressed.clone();
                 }
                 _ => {
@@ -325,14 +343,14 @@ pub fn control_on_click(
                 continue;
             }
             match control_button.0 {
-                ButtonName::DropButton
-                | ButtonName::RotateButton
-                | ButtonName::RightButton
-                | ButtonName::DownButton
-                | ButtonName::LeftButton => {
+                ButtonName::Drop
+                | ButtonName::Rotate
+                | ButtonName::Right
+                | ButtonName::Down
+                | ButtonName::Left => {
                     sprite.image = game_assets.move_button.clone();
                 }
-                ButtonName::PauseButton | ButtonName::SoundButton => {
+                ButtonName::Pause | ButtonName::Sound => {
                     sprite.image = game_assets.effect_button.clone();
                 }
                 _ => {
@@ -351,7 +369,7 @@ pub fn control_drop_to_start_game(
 ) {
     if mouse_button_input.just_pressed(MouseButton::Left) {
         for (transform, control_button, sprite) in query.iter() {
-            if control_button.0 == ButtonName::DropButton {
+            if control_button.0 == ButtonName::Drop {
                 let mouse_pos = window.cursor_position().unwrap();
                 let mouse_world_pos = Vec2::new(
                     mouse_pos.x - window.width() / 2.0,
@@ -379,8 +397,8 @@ where
     brick.nodes.iter().any(condition)
 }
 
-pub fn control_game_system(
-    mut query: Query<(&ControlButton, &mut Sprite, &Transform), Without<FallingBrickNode>>,
+pub fn control_direction_system(
+    mut query: Query<(&ControlButton, &Sprite, &Transform), Without<FallingBrickNode>>,
     window: Single<&Window>,
     mouse_button_input: Res<ButtonInput<MouseButton>>,
     mut game_data: ResMut<GameData>,
@@ -389,6 +407,9 @@ pub fn control_game_system(
         With<FallingBrickNode>,
     >,
 ) {
+    if game_data.paused {
+        return;
+    }
     if mouse_button_input.just_pressed(MouseButton::Left) {
         let mouse_world_pos = get_world_mouse_pos(
             window.cursor_position().unwrap(),
@@ -413,8 +434,9 @@ pub fn control_game_system(
                 node.0 = game_data.falling_brick_node.0 + node.0;
                 node.1 = game_data.falling_brick_node.1 - node.1;
             });
+
             match control_button.0 {
-                ButtonName::DownButton => {
+                ButtonName::Down => {
                     let disabled = falling_brick_nodes_any(&falling_brick, |node| {
                         game_data.board.is_move_to_bottom(node)
                     });
@@ -433,7 +455,10 @@ pub fn control_game_system(
                         }
                     }
                 }
-                ButtonName::RightButton => {
+                ButtonName::Right => {
+                    if game_data.paused {
+                        return;
+                    }
                     let disabled = falling_brick_nodes_any(&falling_brick, |node| {
                         game_data.board.is_move_to_right(node)
                     });
@@ -445,7 +470,10 @@ pub fn control_game_system(
                         }
                     }
                 }
-                ButtonName::LeftButton => {
+                ButtonName::Left => {
+                    if game_data.paused {
+                        return;
+                    }
                     let disabled = falling_brick_nodes_any(&falling_brick, |node| {
                         game_data.board.is_move_to_left(node)
                     });
@@ -457,7 +485,10 @@ pub fn control_game_system(
                         }
                     }
                 }
-                ButtonName::RotateButton => {
+                ButtonName::Rotate => {
+                    if game_data.paused {
+                        return;
+                    }
                     let rotated = game_data.falling_brick_shape.rotate();
                     game_data.falling_brick_shape = rotated;
                     let mut rotated_falling_brick: Brick = game_data.falling_brick_shape.into();
@@ -509,11 +540,13 @@ pub fn control_game_system(
                         };
                     }
                 }
-                ButtonName::DropButton => {
+                ButtonName::Drop => {
+                    if game_data.paused {
+                        return;
+                    }
                     if game_data.is_speed_up_falling {
                         return;
                     }
-                    println!("click drop button");
                     game_data.is_speed_up_falling = true;
                     game_data
                         .falling_timer
@@ -521,6 +554,81 @@ pub fn control_game_system(
                 }
                 _ => {}
             }
+        }
+    }
+}
+
+pub fn replay_game_system(
+    mut commands: Commands,
+    falling_brick_entity: Single<Entity, With<FallingBrick>>,
+    next_brick_entity: Single<Entity, With<NextBrick>>,
+    board_brick_nodes_query: Query<
+        &mut Children,
+        (With<BoardBrickNode>, Without<FallingBrickNode>),
+    >,
+    fill_query: Query<&mut Fill>,
+    stroke_query: Query<&mut Stroke>,
+    query: Single<(&Sprite, &Transform), With<ReplayButton>>,
+    window: Single<&Window>,
+    mouse_button_input: Res<ButtonInput<MouseButton>>,
+    mut game_data: ResMut<GameData>,
+) {
+    if mouse_button_input.just_pressed(MouseButton::Left) {
+        let mouse_world_pos = get_world_mouse_pos(
+            window.cursor_position().unwrap(),
+            window.width(),
+            window.height(),
+        );
+        let (sprite, transform) = query.into_inner();
+        let button_size = sprite.custom_size.unwrap();
+        let is_hit = is_hit_button(
+            Vec2 {
+                x: transform.translation.x,
+                y: transform.translation.y,
+            },
+            mouse_world_pos,
+            button_size.x / 2.0,
+        );
+        if is_hit {
+            reset_game(
+                &mut commands,
+                falling_brick_entity,
+                next_brick_entity,
+                board_brick_nodes_query,
+                fill_query,
+                stroke_query,
+                &mut game_data,
+            );
+
+            spawn_new_falling_brick(&mut commands, &mut game_data);
+        }
+    }
+}
+
+pub fn pause_game_system(
+    query: Single<(&Sprite, &Transform), With<PauseButton>>,
+    window: Single<&Window>,
+    mouse_button_input: Res<ButtonInput<MouseButton>>,
+    mut game_data: ResMut<GameData>,
+) {
+    if mouse_button_input.just_pressed(MouseButton::Left) {
+        let mouse_world_pos = get_world_mouse_pos(
+            window.cursor_position().unwrap(),
+            window.width(),
+            window.height(),
+        );
+        let (sprite, transform) = query.into_inner();
+        let button_size = sprite.custom_size.unwrap();
+        let is_hit = is_hit_button(
+            Vec2 {
+                x: transform.translation.x,
+                y: transform.translation.y,
+            },
+            mouse_world_pos,
+            button_size.x / 2.0,
+        );
+        if is_hit {
+            game_data.paused = !game_data.paused;
         }
     }
 }
