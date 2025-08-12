@@ -32,6 +32,7 @@ use crate::{
     GameAssets,
     brick::{Brick, BrickNode, BrickShape, get_brick_node_position},
     constants::TIMER_FALLING_SECS,
+    game_data::EraseAnimationStep,
     state::GameSate,
 };
 use crate::{
@@ -456,6 +457,50 @@ pub fn spawn_new_falling_brick(commands: &mut Commands, game_data: &mut ResMut<G
     spawn_next_brick(commands, game_data.next_brick_shape.into());
 }
 
+pub fn clean_board_lines(
+    board_brick_nodes_query: &mut Query<
+        (&mut Children, &BrickNode),
+        (With<BoardBrickNode>, Without<FallingBrickNode>),
+    >,
+    game_data: &mut ResMut<GameData>,
+    fill_query: &mut Query<&mut Fill>,
+    stroke_query: &mut Query<&mut Stroke>,
+) {
+    let clean_lines = game_data.clean_lines;
+    let start = clean_lines.0 as i8;
+    let lines = clean_lines.1 as i8;
+    for (children, node) in board_brick_nodes_query {
+        if node.1 < start {
+            continue;
+        }
+        let is_occupied = if node.1 + lines >= BOARD_BRICK_NODE_ROWS as i8 {
+            false
+        } else {
+            game_data
+                .board
+                .is_brick_node_occupied(&BrickNode(node.0, node.1 + lines))
+        };
+        for child in children.iter() {
+            if let Ok(mut fill) = fill_query.get_mut(*child) {
+                fill.color = if is_occupied {
+                    Srgba::hex("#000000").unwrap().into()
+                } else {
+                    Srgba::hex("#879372").unwrap().into()
+                }
+            }
+            if let Ok(mut stroke) = stroke_query.get_mut(*child) {
+                stroke.color = if is_occupied {
+                    Srgba::hex("#000000").unwrap().into()
+                } else {
+                    Srgba::hex("#879372").unwrap().into()
+                }
+            }
+        }
+    }
+    game_data.board.clean(clean_lines);
+    game_data.cleans += clean_lines.1 as u32;
+}
+
 pub fn falling_brick_system(
     mut commands: Commands,
     time: Res<Time>,
@@ -473,7 +518,7 @@ pub fn falling_brick_system(
     mut fill_query: Query<&mut Fill>,
     mut stroke_query: Query<&mut Stroke>,
 ) {
-    if game_data.paused {
+    if game_data.paused || game_data.erase_animation_step == EraseAnimationStep::Playing {
         return;
     }
     let falling_brick_shape = game_data.falling_brick_shape;
@@ -511,38 +556,44 @@ pub fn falling_brick_system(
             let clean_lines = game_data.board.get_clean_lines();
 
             if clean_lines.1 > 0 {
-                let start = clean_lines.0 as i8;
-                let lines = clean_lines.1 as i8;
-                for (children, node) in &mut board_brick_nodes_query {
-                    if node.1 < start {
-                        continue;
-                    }
-                    let is_occupied = if node.1 + lines >= BOARD_BRICK_NODE_ROWS as i8 {
-                        false
-                    } else {
-                        game_data
-                            .board
-                            .is_brick_node_occupied(&BrickNode(node.0, node.1 + lines))
-                    };
-                    for child in children.iter() {
-                        if let Ok(mut fill) = fill_query.get_mut(*child) {
-                            fill.color = if is_occupied {
-                                Srgba::hex("#000000").unwrap().into()
-                            } else {
-                                Srgba::hex("#879372").unwrap().into()
-                            }
-                        }
-                        if let Ok(mut stroke) = stroke_query.get_mut(*child) {
-                            stroke.color = if is_occupied {
-                                Srgba::hex("#000000").unwrap().into()
-                            } else {
-                                Srgba::hex("#879372").unwrap().into()
+                if game_data.erase_animation_step == EraseAnimationStep::NotStart {
+                    game_data.erase_animation_step = EraseAnimationStep::Playing;
+                    game_data.erase_animation_duration = Duration::default();
+                    game_data.clean_lines = clean_lines;
+                    game_data.erase_animation_index = 0;
+                    // update board
+                    for (children, node) in &mut board_brick_nodes_query {
+                        if game_data.board.is_brick_node_occupied(node) {
+                            for child in children.iter() {
+                                if let Ok(mut fill) = fill_query.get_mut(*child) {
+                                    fill.color = Color::BLACK;
+                                }
+                                if let Ok(mut stroke) = stroke_query.get_mut(*child) {
+                                    stroke.color = Color::BLACK;
+                                }
                             }
                         }
                     }
+                    commands
+                        .entity(falling_brick_entity.into_inner())
+                        .try_despawn_recursive();
+                    commands
+                        .entity(next_brick_entity.into_inner())
+                        .try_despawn_recursive();
+
+                    spawn_new_falling_brick(&mut commands, &mut game_data);
+                } else if game_data.erase_animation_step == EraseAnimationStep::End {
+                    game_data.erase_animation_step = EraseAnimationStep::NotStart;
+                    let start = clean_lines.0 as i8;
+                    let lines = clean_lines.1 as i8;
+                    println!("start lines {} {}", start, lines);
+                    clean_board_lines(
+                        &mut board_brick_nodes_query,
+                        &mut game_data,
+                        &mut fill_query,
+                        &mut stroke_query,
+                    );
                 }
-                game_data.board.clean(clean_lines);
-                game_data.cleans += clean_lines.1 as u32;
             } else {
                 // update board
                 for (children, node) in &mut board_brick_nodes_query {
@@ -557,16 +608,15 @@ pub fn falling_brick_system(
                         }
                     }
                 }
+                commands
+                    .entity(falling_brick_entity.into_inner())
+                    .try_despawn_recursive();
+                commands
+                    .entity(next_brick_entity.into_inner())
+                    .try_despawn_recursive();
+
+                spawn_new_falling_brick(&mut commands, &mut game_data);
             }
-
-            commands
-                .entity(falling_brick_entity.into_inner())
-                .try_despawn_recursive();
-            commands
-                .entity(next_brick_entity.into_inner())
-                .try_despawn_recursive();
-
-            spawn_new_falling_brick(&mut commands, &mut game_data);
         } else {
             game_data.falling_brick_node.move_down();
             for (_, mut transform, mut brick_node, mut visibility) in query.iter_mut() {
@@ -593,10 +643,10 @@ pub fn score_board_system(
         Single<&mut Text2d, With<CleansText>>,
     )>,
 ) {
-    if game_data.paused {
-        return;
-    }
-    if !game_data.freeze {
+    if game_data.paused
+        || game_data.erase_animation_step == EraseAnimationStep::Playing
+        || !game_data.freeze
+    {
         return;
     }
     game_data.freeze = false;

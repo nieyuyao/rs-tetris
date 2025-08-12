@@ -14,7 +14,7 @@ use state::GameSate;
 use std::time::Duration;
 
 use crate::{
-    animation::{AnimationIndices, AnimationTimer, play_ready_animation},
+    animation::{play_erase_animation, play_ready_animation, AnimationIndices, AnimationTimer},
     board::{
         board_setup, clock_update_system, falling_brick_system, game_over_system,
         score_board_system, spawn_falling_brick, spawn_next_brick,
@@ -86,7 +86,7 @@ fn start_game(
 }
 
 fn ready_game_system(mut game_data: ResMut<GameData>) {
-    game_data.playing_ready_animation_duration = Duration::default();
+    game_data.ready_animation_duration = Duration::default();
     game_data.is_playing_dino_running_animation = true;
 }
 
@@ -147,6 +147,7 @@ fn main() {
                 score_board_system,
                 replay_game_system,
                 pause_game_system,
+                play_erase_animation,
             )
                 .run_if(in_state(GameSate::Playing)),
         )

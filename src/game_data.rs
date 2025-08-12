@@ -10,6 +10,14 @@ use bevy::{
 };
 use std::time::Duration;
 
+#[derive(Debug, PartialEq, Eq, Default)]
+pub enum EraseAnimationStep {
+    #[default]
+    NotStart,
+    Playing,
+    End,
+}
+
 #[derive(Debug, Clone)]
 pub struct Board {
     pub occupied: Vec<bool>,
@@ -18,8 +26,8 @@ pub struct Board {
 impl Default for Board {
     fn default() -> Self {
         let mut occupied = vec![];
-        (0..BOARD_BRICK_NODE_ROWS).for_each(|r| {
-            (0..BOARD_BRICK_NODE_COLS).for_each(|c| {
+        (0..BOARD_BRICK_NODE_ROWS).for_each(|_| {
+            (0..BOARD_BRICK_NODE_COLS).for_each(|_| {
                 occupied.push(false);
             });
         });
@@ -126,13 +134,18 @@ pub struct GameData {
     pub cleans: u32,
     pub falling_timer: Timer,
     pub clock_timer: Timer,
-    pub playing_ready_animation_duration: Duration,
+    pub ready_animation_duration: Duration,
     pub is_playing_dino_running_animation: bool,
     pub falling_brick_node: BrickNode,
     pub freeze: bool,
     pub is_game_over: bool,
     pub is_speed_up_falling: bool,
-    pub paused: bool
+    pub paused: bool,
+    pub erase_animation_step: EraseAnimationStep,
+    pub erase_animation_duration: Duration,
+    pub erase_animation_timer: Timer,
+    pub erase_animation_index: i8,
+    pub clean_lines: (usize, usize)
 }
 
 impl GameData {
@@ -146,13 +159,18 @@ impl GameData {
             cleans: 0,
             falling_timer: Timer::from_seconds(TIMER_FALLING_SECS, TimerMode::Repeating),
             clock_timer: Timer::from_seconds(60., TimerMode::Repeating),
-            playing_ready_animation_duration: Duration::default(),
+            ready_animation_duration: Duration::default(),
             is_playing_dino_running_animation: true,
             falling_brick_node: BrickNode(5, 23),
             freeze: false,
             is_game_over: false,
             is_speed_up_falling: false,
             paused: false,
+            erase_animation_step: EraseAnimationStep::NotStart,
+            erase_animation_duration: Duration::default(),
+            erase_animation_timer: Timer::from_seconds(0.5, TimerMode::Repeating),
+            erase_animation_index: 0,
+            clean_lines: (0, 0)
         }
     }
 
@@ -174,6 +192,9 @@ impl GameData {
         self.falling_timer = Timer::from_seconds(TIMER_FALLING_SECS, TimerMode::Repeating);
         self.is_speed_up_falling = false;
         self.paused = false;
+        self.erase_animation_step = EraseAnimationStep::NotStart;
+        self.clean_lines = (0, 0);
+        self.erase_animation_index = 0
     }
 }
 
