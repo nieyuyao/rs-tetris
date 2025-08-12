@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use bevy::{
-    asset::Handle,
+    asset::{Assets, Handle},
     color::{Color, Srgba},
     ecs::{
         bundle::Bundle,
@@ -11,9 +11,9 @@ use bevy::{
         system::{Commands, ParamSet, Query, Res, ResMut, Single},
     },
     hierarchy::{BuildChildren, ChildBuild, ChildBuilder, Children, DespawnRecursiveExt},
-    math::Vec2,
+    math::{UVec2, Vec2},
     render::view::Visibility,
-    sprite::{Anchor, Sprite},
+    sprite::{Anchor, Sprite, TextureAtlas, TextureAtlasLayout},
     state::state::NextState,
     text::{Font, FontSmoothing, Text2d, TextColor, TextFont},
     time::Time,
@@ -81,6 +81,12 @@ pub struct BoardBrickNode;
 
 #[derive(Component)]
 pub struct TimeText;
+
+#[derive(Component)]
+pub struct PauseIcon;
+
+#[derive(Component)]
+pub struct SoundIcon;
 
 fn spawn_next_brick_board(commands: &mut ChildBuilder) {
     (0..4)
@@ -181,12 +187,12 @@ fn spawn_label(text: String, x: f32, y: f32) -> impl Bundle {
     )
 }
 
-fn spawn_text(text: String, x: f32, y: f32, font: Handle<Font>) -> impl Bundle {
+fn spawn_text(text: String, x: f32, y: f32, font: Handle<Font>, font_size: f32) -> impl Bundle {
     (
         Text2d::new(text),
         TextColor(Color::BLACK),
         TextFont {
-            font_size: 20.0,
+            font_size,
             font_smoothing: FontSmoothing::AntiAliased,
             font,
             ..TextFont::default()
@@ -243,7 +249,11 @@ pub fn spawn_falling_brick(
         });
 }
 
-pub fn board_setup(mut commands: Commands, game_assets: Res<GameAssets>) {
+pub fn board_setup(
+    mut commands: Commands,
+    game_assets: Res<GameAssets>,
+    mut texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
+) {
     commands
         .spawn((
             ShapeBundle {
@@ -309,6 +319,7 @@ pub fn board_setup(mut commands: Commands, game_assets: Res<GameAssets>) {
             padding_x,
             200.0,
             game_assets.font.clone(),
+            20.0,
         ))
         .insert(ScoreText);
 
@@ -323,6 +334,7 @@ pub fn board_setup(mut commands: Commands, game_assets: Res<GameAssets>) {
             padding_x,
             150.0,
             game_assets.font.clone(),
+            20.0,
         ))
         .insert(LevelText);
 
@@ -337,6 +349,7 @@ pub fn board_setup(mut commands: Commands, game_assets: Res<GameAssets>) {
             padding_x,
             100.0,
             game_assets.font.clone(),
+            20.0,
         ))
         .insert(CleansText);
 
@@ -359,11 +372,46 @@ pub fn board_setup(mut commands: Commands, game_assets: Res<GameAssets>) {
     commands
         .spawn(spawn_text(
             format!("{}:{}", hours, minutes),
-            padding_x,
+            padding_x + 10.,
             -26.,
             game_assets.font.clone(),
+            16.0,
         ))
         .insert(TimeText);
+
+    // pause
+    let pause = game_assets.pause.clone();
+    let layout = TextureAtlasLayout::from_grid(UVec2::new(10, 12), 2, 1, None, None);
+    let texture_atlas_layout = texture_atlas_layouts.add(layout);
+    commands.spawn((
+        Sprite::from_atlas_image(
+            pause,
+            TextureAtlas {
+                layout: texture_atlas_layout,
+                index: 0,
+            },
+        ),
+        PauseIcon,
+        Transform::from_xyz(padding_x - 34., -36., 100.),
+    ));
+
+    // sound
+    let sound = game_assets.sound.clone();
+    let layout = TextureAtlasLayout::from_grid(UVec2::new(46, 34), 2, 1, None, None);
+    let texture_atlas_layout = texture_atlas_layouts.add(layout);
+    commands.spawn((
+        Sprite {
+            image: sound,
+            texture_atlas: Some(TextureAtlas {
+                layout: texture_atlas_layout,
+                index: 0,
+            }),
+            custom_size: Some(Vec2::new(23., 17.)),
+            ..default()
+        },
+        SoundIcon,
+        Transform::from_xyz(padding_x - 56., -36., 100.),
+    ));
 }
 
 pub fn get_speed(level: u32) -> f32 {
@@ -396,10 +444,7 @@ pub fn clock_update_system(
     }
 }
 
-pub fn spawn_new_falling_brick(
-    commands: &mut Commands,
-    game_data: &mut ResMut<GameData>,
-) {
+pub fn spawn_new_falling_brick(commands: &mut Commands, game_data: &mut ResMut<GameData>) {
     game_data.falling_brick_node = game_data.new_falling_brick_node();
     game_data.falling_brick_shape = game_data.next_brick_shape;
     game_data.next_brick_shape = BrickShape::next();
@@ -517,12 +562,11 @@ pub fn falling_brick_system(
             commands
                 .entity(falling_brick_entity.into_inner())
                 .try_despawn_recursive();
-            commands.entity(next_brick_entity.into_inner()).try_despawn_recursive();
+            commands
+                .entity(next_brick_entity.into_inner())
+                .try_despawn_recursive();
 
-            spawn_new_falling_brick(
-                &mut commands,
-                &mut game_data,
-            );
+            spawn_new_falling_brick(&mut commands, &mut game_data);
         } else {
             game_data.falling_brick_node.move_down();
             for (_, mut transform, mut brick_node, mut visibility) in query.iter_mut() {

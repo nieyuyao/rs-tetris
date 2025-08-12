@@ -40,7 +40,7 @@ pub struct GameAssets {
     replay_button_pressed: Handle<Image>,
     effect_button: Handle<Image>,
     effect_button_pressed: Handle<Image>,
-    volume: Handle<Image>,
+    sound: Handle<Image>,
     pause: Handle<Image>,
     dino: Handle<Image>,
     font: Handle<Font>,
@@ -52,16 +52,16 @@ fn load_assets(
     mut next_state: ResMut<NextState<GameSate>>,
 ) {
     commands.insert_resource(GameAssets {
-        move_button: asset_server.load("../assets/move_button.png"),
-        move_button_pressed: asset_server.load("../assets/move_button_pressed.png"),
-        replay_button: asset_server.load("../assets/replay_button.png"),
-        replay_button_pressed: asset_server.load("../assets/replay_button_pressed.png"),
-        effect_button: asset_server.load("../assets/effect_button.png"),
-        effect_button_pressed: asset_server.load("../assets/effect_button_pressed.png"),
-        pause: asset_server.load("../assets/pause.png"),
-        volume: asset_server.load("../assets/volume.png"),
-        dino: asset_server.load("../assets/dino.png"),
-        font: asset_server.load("../assets/digital7mono.ttf"),
+        move_button: asset_server.load("move_button.png"),
+        move_button_pressed: asset_server.load("move_button_pressed.png"),
+        replay_button: asset_server.load("replay_button.png"),
+        replay_button_pressed: asset_server.load("replay_button_pressed.png"),
+        effect_button: asset_server.load("effect_button.png"),
+        effect_button_pressed: asset_server.load("effect_button_pressed.png"),
+        pause: asset_server.load("pause.png"),
+        sound: asset_server.load("sound.png"),
+        dino: asset_server.load("dino.png"),
+        font: asset_server.load("digital7mono.ttf"),
     });
 
     next_state.set(GameSate::Ready);

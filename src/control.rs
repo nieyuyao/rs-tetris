@@ -6,10 +6,10 @@ use bevy::{
         component::Component,
         entity::Entity,
         query::{With, Without},
-        system::{Commands, Query, Res, ResMut, Single},
+        system::{Commands, ParamSet, Query, Res, ResMut, Single},
     },
     hierarchy::{BuildChildren, Children},
-    input::{ButtonInput, mouse::MouseButton},
+    input::{mouse::MouseButton, ButtonInput},
     math::{Vec2, Vec3},
     render::view::Visibility,
     sprite::Sprite,
@@ -23,13 +23,13 @@ use bevy_prototype_lyon::draw::{Fill, Stroke};
 use crate::{
     GameAssets,
     board::{
-        BoardBrickNode, FallingBrick, FallingBrickNode, NextBrick, reset_game,
+        BoardBrickNode, FallingBrick, FallingBrickNode, NextBrick, PauseIcon, reset_game,
         spawn_new_falling_brick,
     },
     brick::{Brick, BrickNode, get_brick_node_position},
     constants::{BOARD_BRICK_NODE_COLS, BRICK_NODE_WIDTH, TIMER_FALLING_SPEED_UP_SECS},
-    game_data::{GameData},
-    state::{GameSate},
+    game_data::GameData,
+    state::GameSate,
 };
 
 #[derive(PartialEq, Eq)]
@@ -606,10 +606,13 @@ pub fn replay_game_system(
 }
 
 pub fn pause_game_system(
-    query: Single<(&Sprite, &Transform), With<PauseButton>>,
     window: Single<&Window>,
     mouse_button_input: Res<ButtonInput<MouseButton>>,
     mut game_data: ResMut<GameData>,
+    mut query: ParamSet<(
+        Single<(&Sprite, &Transform), With<PauseButton>>,
+        Single<&mut Sprite, With<PauseIcon>>
+    )>,
 ) {
     if mouse_button_input.just_pressed(MouseButton::Left) {
         let mouse_world_pos = get_world_mouse_pos(
@@ -617,7 +620,7 @@ pub fn pause_game_system(
             window.width(),
             window.height(),
         );
-        let (sprite, transform) = query.into_inner();
+        let (sprite, transform) = query.p0().into_inner();
         let button_size = sprite.custom_size.unwrap();
         let is_hit = is_hit_button(
             Vec2 {
@@ -629,6 +632,11 @@ pub fn pause_game_system(
         );
         if is_hit {
             game_data.paused = !game_data.paused;
+
+            let mut sprite = query.p1().into_inner();
+            if let Some(atlas) = &mut sprite.texture_atlas {
+                atlas.index = if game_data.paused { 1 } else { 0 };
+            }
         }
     }
 }
